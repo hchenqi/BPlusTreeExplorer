@@ -10,6 +10,7 @@
 #include "WndDesign/layout/ListLayout.h"
 #include "WndDesign/layout/ListLayoutAuto.h"
 #include "WndDesign/control/TextBox.h"
+#include "WndDesign/message/timeout.h"
 
 #include <vector>
 #include <optional>
@@ -113,6 +114,9 @@ private:
 	static_assert(child_number_min >= 2);
 
 private:
+	static constexpr uint animation_delay = 1000;
+
+private:
 	class IndexView : public FixedFrame<Auto, Assigned> {
 	private:
 		struct TextStyle : TextBox::Style {
@@ -124,7 +128,7 @@ private:
 	public:
 		IndexView(index_type key) : FixedFrame{
 			30px,
-			new InnerBorderFrame{
+			border_frame = new InnerBorderFrame{
 				Border(1px, Color::Black),
 				new ClipFrame<Assigned, Assigned> {
 					text_box = new TextBox(TextStyle(), std::to_wstring(key))
@@ -132,10 +136,23 @@ private:
 			}
 		} {
 		}
+
 	private:
 		ref_ptr<TextBox> text_box;
 	public:
 		void SetIndex(index_type key) { text_box->SetText(std::to_wstring(key)); }
+
+	public:
+		static constexpr Border border_normal = Border(1px, Color::Black);
+		static constexpr Border border_find = Border(1px, Color::Orange);
+		static constexpr Border border_inserted = Border(1px, Color::Green);
+		static constexpr Border border_delete = Border(1px, Color::Red);
+		static constexpr Border border_updated = Border(1px, Color::Blue);
+	public:
+		ref_ptr<InnerBorderFrame<Assigned, Assigned>> border_frame;
+	public:
+		void SetBorderState(Border border) { border_frame->SetBorder(border); }
+		void ResetBorderState() { border_frame->SetBorder(border_normal); }
 	};
 
 	class ValueView : public MinFrame {
@@ -192,8 +209,12 @@ private:
 		index_list.insert(index_list.begin() + index, key);
 		index_list_view->InsertChild(index, new IndexView(key));
 		child_list_view->InsertChild(index, new ValueView(value));
-		if (index == 0) { UpdateParentIndex(); }
-		if (index_list.size() > child_number_max) { Split(); }
+		GetIndex(index).SetBorderState(IndexView::border_inserted);
+		SetTimeout([=, this]() {
+			GetIndex(index).ResetBorderState();
+			if (index == 0) { UpdateParentIndex(); }
+			if (index_list.size() > child_number_max) { Split(); }
+		}, animation_delay);
 	}
 	void InsertAfter(NodeView& child, std::unique_ptr<NodeView> node) {
 		size_t index = child_list_view->GetChildIndex(child) + 1;
@@ -201,14 +222,22 @@ private:
 		index_list.insert(index_list.begin() + index, key);
 		index_list_view->InsertChild(index, new IndexView(key));
 		child_list_view->InsertChild(index, std::move(node));
-		if (index_list.size() > child_number_max) { Split(); }
+		GetIndex(index).SetBorderState(IndexView::border_inserted);
+		SetTimeout([=, this]() {
+			GetIndex(index).ResetBorderState();
+			if (index_list.size() > child_number_max) { Split(); }
+		}, animation_delay);
 	}
 	void UpdateIndexAt(NodeView& child) {
 		size_t index = child_list_view->GetChildIndex(child);
 		index_type key = child.index_list.front();
 		index_list[index] = key;
-		GetIndex(index).SetIndex(key);
-		if (index == 0) { UpdateParentIndex(); }
+		GetIndex(index).SetBorderState(IndexView::border_updated);
+		SetTimeout([=, this]() {
+			GetIndex(index).ResetBorderState();
+			GetIndex(index).SetIndex(key);
+			if (index == 0) { UpdateParentIndex(); }
+		}, animation_delay);
 	}
 	void Split() {
 		size_t index = index_list.size() / 2;
@@ -242,11 +271,15 @@ private:
 	}
 private:
 	void DeleteAt(size_t index) {
-		index_list.erase(index_list.begin() + index);
-		index_list_view->EraseChild(index);
-		child_list_view->EraseChild(index);
-		if (index == 0) { UpdateParentIndex(); }
-		if (index_list.size() < child_number_min) { Merge(); }
+		GetIndex(index).SetBorderState(IndexView::border_delete);
+		SetTimeout([=, this]() {
+			GetIndex(index).ResetBorderState();
+			index_list.erase(index_list.begin() + index);
+			index_list_view->EraseChild(index);
+			child_list_view->EraseChild(index);
+			if (index == 0 && !(index_list.size() < child_number_min && !next_view && prev_view)) { UpdateParentIndex(); }
+			if (index_list.size() < child_number_min) { Merge(); }
+		}, animation_delay);
 	}
 	void DeleteChild(NodeView& child) {
 		DeleteAt(child_list_view->GetChildIndex(child));
@@ -297,7 +330,11 @@ private:
 			InsertAt(index, key, value);
 		} else {
 			if (index > 0) { index--; }
-			GetChild(index).Insert(key, value);
+			GetIndex(index).SetBorderState(IndexView::border_find);
+			SetTimeout([=, this]() {
+				GetIndex(index).ResetBorderState();
+				GetChild(index).Insert(key, value);
+			}, animation_delay);
 		}
 	}
 	void Delete(index_type key) {
@@ -307,7 +344,11 @@ private:
 			if (index_list[index] != key) { return; }
 			DeleteAt(index);
 		} else {
-			GetChild(index).Delete(key);
+			GetIndex(index).SetBorderState(IndexView::border_find);
+			SetTimeout([=, this]() {
+				GetIndex(index).ResetBorderState();
+				GetChild(index).Delete(key);
+			}, animation_delay);
 		}
 	}
 };
