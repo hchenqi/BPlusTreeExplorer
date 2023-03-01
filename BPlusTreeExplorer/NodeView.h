@@ -26,41 +26,45 @@ using value_type = std::wstring;
 class NodeView;
 
 
-class ScrollView : public ScrollFrame<Bidirectional> {
-public:
-	ScrollView();
-public:
-	ScrollFrame::OnMouseMsg;
-};
-
-
-class RootView : public WndFrameMutable, public LayoutType<Auto, Auto> {
+class RootView : public ScrollFrame<Bidirectional> {
 private:
 	friend class NodeView;
 public:
 	RootView();
+
+private:
+	class ChildFrame : public WndFrameMutable, public LayoutType<Auto, Auto> {
+	public:
+		WndFrameMutable::WndFrameMutable;
+		WndFrameMutable::child;
+	};
+private:
+	ref_ptr<ChildFrame> child_frame;
 private:
 	NodeView& GetChild() const;
+
+private:
+	static constexpr uint step_delay = 1000;
+private:
+	bool task_running = false;
+private:
+	Task<> Step() {
+		return StartTimeout(step_delay);
+	}
+
 private:
 	void BuildRoot(std::unique_ptr<NodeView> node);
 	void DestroyRoot(std::unique_ptr<NodeView> node);
-private:
-	bool task_running = false;
 public:
 	Task<> Insert(index_type key, value_type value);
 	Task<> Delete(index_type key);
-public:
-	ref_ptr<ScrollView> parent = nullptr;
+
 private:
 	virtual ref_ptr<WndObject> HitTest(Point& point) override { return this; }
 	virtual void OnMouseMsg(MouseMsg msg) override {
 		switch (msg.type) {
 		case MouseMsg::LeftDown: {
 			if (task_running) { return; }
-			//static const index_type value[] = { 27, 45, 35, 73, 47, 74, 99, 13, 51, 6, 36, 34, 58, 39, 61, 53 };
-			//static size_t index = 0;
-			//if (index >= 16) { return; }
-			//Insert(value[index++], L"");
 			index_type key = rand() % 20; value_type value(1, L'A' + rand() % 26);
 			Insert(key, value);
 			break;
@@ -72,14 +76,11 @@ private:
 			break;
 		}
 		default:
-			parent->OnMouseMsg(msg);
+			ScrollFrame::OnMouseMsg(msg);
 			break;
 		}
 	}
 };
-
-
-inline ScrollView::ScrollView() : ScrollFrame(new PaddingFrame(Padding(50px), [&]() {auto root = new RootView(); root->parent = this; return root; }())) { srand(time(nullptr)); }
 
 
 class NodeView : public WndFrame, public LayoutType<Auto, Auto> {
@@ -87,7 +88,7 @@ private:
 	friend class RootView;
 
 public:
-	NodeView() : WndFrame{
+	NodeView(RootView& root) : WndFrame{
 		new InnerBorderFrame{
 			Border(1px, Color::Green),
 			new PaddingFrame{
@@ -106,23 +107,14 @@ public:
 				}
 			}
 		}
-	} {
+	}, root(root) {
 	}
-
 	~NodeView() {}
 
 private:
-	static constexpr size_t child_number_max = 3;
-	static constexpr size_t child_number_min = (child_number_max + 1) / 2;
-	static_assert(child_number_min < child_number_max);
-	static_assert(child_number_min >= 2);
-
+	RootView& root;
 private:
-	static constexpr uint step_delay = 1000;
-private:
-	Task<> Step() {
-		return StartTimeout(step_delay);
-	}
+	Task<> Step() { return root.Step(); }
 
 private:
 	class IndexView : public FixedFrame<Auto, Assigned> {
@@ -178,6 +170,12 @@ private:
 	};
 
 private:
+	static constexpr size_t child_number_max = 3;
+	static constexpr size_t child_number_min = (child_number_max + 1) / 2;
+	static_assert(child_number_min < child_number_max);
+	static_assert(child_number_min >= 2);
+
+private:
 	ref_ptr<NodeView> parent_view = nullptr;
 	ref_ptr<NodeView> prev_view = nullptr;
 	ref_ptr<NodeView> next_view = nullptr;
@@ -189,7 +187,7 @@ private:
 private:
 	bool IsRoot() const { return parent_view == nullptr; }
 	bool IsLeaf() const { return leaf; }
-	RootView& GetRoot() const { return static_cast<RootView&>(GetParent()); }
+	RootView& GetRoot() const { return root; }
 private:
 	IndexView& GetIndex(size_t index) const { return static_cast<IndexView&>(index_list_view->GetChild(index)); }
 	NodeView& GetChild(size_t index) const { return static_cast<NodeView&>(child_list_view->GetChild(index)); }
@@ -246,7 +244,7 @@ private:
 	}
 	Task<> Split() {
 		size_t index = index_list.size() / 2;
-		std::unique_ptr<NodeView> sibling(new NodeView());
+		std::unique_ptr<NodeView> sibling(new NodeView(root));
 		sibling->parent_view = parent_view;
 		sibling->prev_view = this;
 		sibling->next_view = next_view;
@@ -356,16 +354,26 @@ private:
 };
 
 
-inline RootView::RootView() : WndFrameMutable(new NodeView()) { GetChild().leaf = true; }
+inline RootView::RootView() : ScrollFrame{
+	new PaddingFrame{
+		Padding(50px),
+		child_frame = new ChildFrame{
+			new NodeView(*this)
+		}
+	}
+} {
+	GetChild().leaf = true;
+	srand(time(nullptr));
+}
 
-inline NodeView& RootView::GetChild() const { return static_cast<NodeView&>(*child); }
+inline NodeView& RootView::GetChild() const { return static_cast<NodeView&>(*child_frame->child); }
 
 inline void RootView::BuildRoot(std::unique_ptr<NodeView> node) {
-	std::unique_ptr<NodeView> root_old(static_cast<NodeView*>(Reset(new NodeView()).release()));
+	std::unique_ptr<NodeView> root_old(static_cast<NodeView*>(child_frame->Reset(new NodeView(*this)).release()));
 	GetChild().Adopt(std::move(root_old), std::move(node));
 }
 
-inline void RootView::DestroyRoot(std::unique_ptr<NodeView> node) { node->parent_view = nullptr; Reset(std::move(node)); }
+inline void RootView::DestroyRoot(std::unique_ptr<NodeView> node) { node->parent_view = nullptr; child_frame->Reset(std::move(node)); }
 
 inline Task<> RootView::Insert(index_type key, value_type value) {
 	task_running = true;

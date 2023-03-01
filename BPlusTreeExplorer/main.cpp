@@ -18,7 +18,7 @@ int main() {
 	global.AddWnd(
 		new TitleBarFrame{
 			MainFrameStyle(),
-			new ScrollView()
+			new RootView()
 		}
 	);
 	global.MessageLoop();
