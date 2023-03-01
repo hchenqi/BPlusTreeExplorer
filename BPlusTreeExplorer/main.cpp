@@ -1,5 +1,6 @@
 #include "WndDesign/window/Global.h"
 #include "WndDesign/widget/TitleBarFrame.h"
+#include "WndDesign/frame/CenterFrame.h"
 
 #include "NodeView.h"
 
@@ -18,7 +19,9 @@ int main() {
 	global.AddWnd(
 		new TitleBarFrame{
 			MainFrameStyle(),
-			new RootView()
+			new CenterFrame<Assigned, Assigned>{
+				new RootView()
+			}
 		}
 	);
 	global.MessageLoop();

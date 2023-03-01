@@ -14,8 +14,6 @@
 #include "WndDesign/message/mouse_tracker.h"
 
 #include <vector>
-#include <optional>
-
 #include <random>
 
 
@@ -27,11 +25,38 @@ using value_type = std::wstring;
 class NodeView;
 
 
-class RootView : public ScrollFrame<Bidirectional> {
+class RootView : public ScrollFrame<Bidirectional>, public LayoutType<Relative, Relative> {
 private:
 	friend class NodeView;
 public:
 	RootView();
+
+	// layout
+private:
+	Size size_ref;
+private:
+	virtual Size OnSizeRefUpdate(Size size_ref) override {
+		if (this->size_ref != size_ref) {
+			this->size_ref = size_ref;
+			Size size = Size(std::min(size_ref.width, child_size.width), std::min(size_ref.height, child_size.height));
+			if (this->size != size) {
+				this->size = size;
+				UpdateFrameOffset(frame_offset);
+			}
+		}
+		return size;
+	}
+	virtual void OnChildSizeUpdate(WndObject& child, Size child_size) override {
+		if (this->child_size != child_size) {
+			this->child_size = child_size;
+			Size size = Size(std::min(size_ref.width, child_size.width), std::min(size_ref.height, child_size.height));
+			if (this->size != size) {
+				this->size = size;
+				SizeUpdated(size);
+			}
+			UpdateFrameOffset(frame_offset);
+		}
+	}
 
 private:
 	class ChildFrame : public WndFrameMutable, public LayoutType<Auto, Auto> {
