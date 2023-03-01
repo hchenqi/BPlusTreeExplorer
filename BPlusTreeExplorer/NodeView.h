@@ -11,6 +11,7 @@
 #include "WndDesign/layout/ListLayoutAuto.h"
 #include "WndDesign/control/TextBox.h"
 #include "WndDesign/message/timeout.h"
+#include "WndDesign/message/mouse_tracker.h"
 
 #include <vector>
 #include <optional>
@@ -47,9 +48,14 @@ private:
 	static constexpr uint step_delay = 1000;
 private:
 	bool task_running = false;
+	Continuation<> continuation = nullptr;
 private:
 	Task<> Step() {
-		return StartTimeout(step_delay);
+		//return StartTimeout(step_delay);
+		return StartTask([this](Continuation<> continuation) { this->continuation = continuation; });
+	}
+	void Next() {
+		if (task_running) { continuation(); }
 	}
 
 private:
@@ -60,24 +66,44 @@ public:
 	Task<> Delete(index_type key);
 
 private:
+	MouseTracker mouse_tracker;
+	Point mouse_down_frame_offset;
+private:
 	virtual ref_ptr<WndObject> HitTest(Point& point) override { return this; }
 	virtual void OnMouseMsg(MouseMsg msg) override {
+		switch (mouse_tracker.Track(msg)) {
+		case MouseTrackMsg::LeftDown:
+			mouse_down_frame_offset = frame_offset;
+			SetFocus();
+			break;
+		case MouseTrackMsg::LeftClick:
+			if (task_running) {
+				Next();
+			} else {
+				index_type key = rand() % 20; value_type value(1, L'A' + rand() % 26);
+				Insert(key, value);
+			}
+			break;
+		case MouseTrackMsg::LeftDrag:
+			UpdateFrameOffset(mouse_down_frame_offset - (msg.point - mouse_tracker.mouse_down_position));
+			break;
+		}
 		switch (msg.type) {
-		case MouseMsg::LeftDown: {
+		case MouseMsg::RightDown:
 			if (task_running) { return; }
-			index_type key = rand() % 20; value_type value(1, L'A' + rand() % 26);
-			Insert(key, value);
+			Delete(rand() % 20);
 			break;
-		}
-		case MouseMsg::RightDown: {
-			if (task_running) { return; }
-			index_type key = rand() % 20;
-			Delete(key);
-			break;
-		}
 		default:
 			ScrollFrame::OnMouseMsg(msg);
 			break;
+		}
+	}
+	virtual void OnKeyMsg(KeyMsg msg) override {
+		switch (msg.type) {
+		case KeyMsg::KeyDown:
+			switch (msg.key) {
+			case Key::Right: Next(); break;
+			}
 		}
 	}
 };
