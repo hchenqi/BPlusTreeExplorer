@@ -82,6 +82,10 @@ private:
 	void Next() {
 		if (task_running) { continuation(); }
 	}
+public:
+	void ScrollIntoView(WndObject& descendent, Rect region) {
+		ScrollFrame::ScrollIntoView(Rect(child->ConvertDescendentPoint(descendent, region.point), region.size));
+	}
 
 private:
 	void BuildRoot(std::unique_ptr<NodeView> node);
@@ -110,7 +114,7 @@ private:
 			}
 			break;
 		case MouseTrackMsg::LeftDrag:
-			UpdateFrameOffset(mouse_down_frame_offset - (msg.point - mouse_tracker.mouse_down_position));
+			ScrollFrame::ScrollIntoView(Rect(mouse_down_frame_offset - (msg.point - mouse_tracker.mouse_down_position), size));
 			break;
 		}
 		switch (msg.type) {
@@ -177,7 +181,7 @@ private:
 			}
 		};
 	public:
-		IndexView(index_type key) : FixedFrame{
+		IndexView(RootView& root, index_type key) : FixedFrame{
 			30px,
 			border_frame = new InnerBorderFrame{
 				Border(1px, Color::Black),
@@ -185,10 +189,11 @@ private:
 					text_box = new TextBox(TextStyle(), std::to_wstring(key))
 				}
 			}
-		} {
+		}, root(root) {
 		}
 
 	private:
+		RootView& root;
 		ref_ptr<TextBox> text_box;
 	public:
 		void SetIndex(index_type key) { text_box->SetText(std::to_wstring(key)); }
@@ -202,7 +207,7 @@ private:
 	public:
 		ref_ptr<InnerBorderFrame<Assigned, Assigned>> border_frame;
 	public:
-		void SetBorderState(Border border) { border_frame->SetBorder(border); }
+		void SetBorderState(Border border) { border_frame->SetBorder(border); root.ScrollIntoView(*this, Extend(Rect(point_zero, size), 30px)); }
 		void ResetBorderState() { border_frame->SetBorder(border_normal); }
 	};
 
@@ -264,7 +269,7 @@ private:
 private:
 	Task<> InsertAt(size_t index, index_type key, value_type value) {
 		index_list.insert(index_list.begin() + index, key);
-		index_list_view->InsertChild(index, new IndexView(key));
+		index_list_view->InsertChild(index, new IndexView(root, key));
 		child_list_view->InsertChild(index, new ValueView(value));
 		GetIndex(index).SetBorderState(IndexView::border_inserted);
 		co_await Step();
@@ -276,7 +281,7 @@ private:
 		size_t index = child_list_view->GetChildIndex(child) + 1;
 		index_type key = node->index_list.front();
 		index_list.insert(index_list.begin() + index, key);
-		index_list_view->InsertChild(index, new IndexView(key));
+		index_list_view->InsertChild(index, new IndexView(root, key));
 		child_list_view->InsertChild(index, std::move(node));
 		GetIndex(index).SetBorderState(IndexView::border_inserted);
 		co_await Step();
@@ -316,7 +321,7 @@ private:
 		index_list.emplace_back(key_first); index_list.emplace_back(key_second);
 
 		std::vector<ListLayout<Horizontal>::child_ptr> index_list;
-		index_list.emplace_back(new IndexView(key_first)); index_list.emplace_back(new IndexView(key_second));
+		index_list.emplace_back(new IndexView(root, key_first)); index_list.emplace_back(new IndexView(root, key_second));
 		index_list_view->InsertChild(0, std::move(index_list));
 
 		std::vector<ListLayoutAuto<Horizontal>::child_ptr> child_list;
