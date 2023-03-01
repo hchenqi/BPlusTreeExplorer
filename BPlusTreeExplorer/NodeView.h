@@ -44,9 +44,11 @@ private:
 private:
 	void BuildRoot(std::unique_ptr<NodeView> node);
 	void DestroyRoot(std::unique_ptr<NodeView> node);
+private:
+	bool task_running = false;
 public:
-	void Insert(index_type key, value_type value);
-	void Delete(index_type key);
+	Task<> Insert(index_type key, value_type value);
+	Task<> Delete(index_type key);
 public:
 	ref_ptr<ScrollView> parent = nullptr;
 private:
@@ -54,6 +56,7 @@ private:
 	virtual void OnMouseMsg(MouseMsg msg) override {
 		switch (msg.type) {
 		case MouseMsg::LeftDown: {
+			if (task_running) { return; }
 			//static const index_type value[] = { 27, 45, 35, 73, 47, 74, 99, 13, 51, 6, 36, 34, 58, 39, 61, 53 };
 			//static size_t index = 0;
 			//if (index >= 16) { return; }
@@ -63,6 +66,7 @@ private:
 			break;
 		}
 		case MouseMsg::RightDown: {
+			if (task_running) { return; }
 			index_type key = rand() % 20;
 			Delete(key);
 			break;
@@ -114,7 +118,11 @@ private:
 	static_assert(child_number_min >= 2);
 
 private:
-	static constexpr uint animation_delay = 1000;
+	static constexpr uint step_delay = 1000;
+private:
+	Task<> Step() {
+		return StartTimeout(step_delay);
+	}
 
 private:
 	class IndexView : public FixedFrame<Auto, Assigned> {
@@ -203,43 +211,40 @@ private:
 
 	// bottom up
 private:
-	void UpdateParentIndex() { if (!IsRoot()) { parent_view->UpdateIndexAt(*this); } }
+	Task<> UpdateParentIndex() { if (!IsRoot()) { co_await parent_view->UpdateIndexAt(*this); } }
 private:
-	void InsertAt(size_t index, index_type key, value_type value) {
+	Task<> InsertAt(size_t index, index_type key, value_type value) {
 		index_list.insert(index_list.begin() + index, key);
 		index_list_view->InsertChild(index, new IndexView(key));
 		child_list_view->InsertChild(index, new ValueView(value));
 		GetIndex(index).SetBorderState(IndexView::border_inserted);
-		SetTimeout([=, this]() {
-			GetIndex(index).ResetBorderState();
-			if (index == 0) { UpdateParentIndex(); }
-			if (index_list.size() > child_number_max) { Split(); }
-		}, animation_delay);
+		co_await Step();
+		GetIndex(index).ResetBorderState();
+		if (index == 0) { co_await UpdateParentIndex(); }
+		if (index_list.size() > child_number_max) { co_await Split(); }
 	}
-	void InsertAfter(NodeView& child, std::unique_ptr<NodeView> node) {
+	Task<> InsertAfter(NodeView& child, std::unique_ptr<NodeView> node) {
 		size_t index = child_list_view->GetChildIndex(child) + 1;
 		index_type key = node->index_list.front();
 		index_list.insert(index_list.begin() + index, key);
 		index_list_view->InsertChild(index, new IndexView(key));
 		child_list_view->InsertChild(index, std::move(node));
 		GetIndex(index).SetBorderState(IndexView::border_inserted);
-		SetTimeout([=, this]() {
-			GetIndex(index).ResetBorderState();
-			if (index_list.size() > child_number_max) { Split(); }
-		}, animation_delay);
+		co_await Step();
+		GetIndex(index).ResetBorderState();
+		if (index_list.size() > child_number_max) { co_await Split(); }
 	}
-	void UpdateIndexAt(NodeView& child) {
+	Task<> UpdateIndexAt(NodeView& child) {
 		size_t index = child_list_view->GetChildIndex(child);
 		index_type key = child.index_list.front();
 		index_list[index] = key;
+		GetIndex(index).SetIndex(key);
 		GetIndex(index).SetBorderState(IndexView::border_updated);
-		SetTimeout([=, this]() {
-			GetIndex(index).ResetBorderState();
-			GetIndex(index).SetIndex(key);
-			if (index == 0) { UpdateParentIndex(); }
-		}, animation_delay);
+		co_await Step();
+		GetIndex(index).ResetBorderState();
+		if (index == 0) { co_await UpdateParentIndex(); }
 	}
-	void Split() {
+	Task<> Split() {
 		size_t index = index_list.size() / 2;
 		std::unique_ptr<NodeView> sibling(new NodeView());
 		sibling->parent_view = parent_view;
@@ -254,7 +259,7 @@ private:
 		if (IsRoot()) {
 			GetRoot().BuildRoot(std::move(sibling));
 		} else {
-			parent_view->InsertAfter(*this, std::move(sibling));
+			co_await parent_view->InsertAfter(*this, std::move(sibling));
 		}
 	}
 	void Adopt(std::unique_ptr<NodeView> first, std::unique_ptr<NodeView> second) {
@@ -270,27 +275,26 @@ private:
 		InsertChild(0, std::move(child_list));
 	}
 private:
-	void DeleteAt(size_t index) {
+	Task<> DeleteAt(size_t index) {
 		GetIndex(index).SetBorderState(IndexView::border_delete);
-		SetTimeout([=, this]() {
-			GetIndex(index).ResetBorderState();
-			index_list.erase(index_list.begin() + index);
-			index_list_view->EraseChild(index);
-			child_list_view->EraseChild(index);
-			if (index == 0 && !(index_list.size() < child_number_min && !next_view && prev_view)) { UpdateParentIndex(); }
-			if (index_list.size() < child_number_min) { Merge(); }
-		}, animation_delay);
+		co_await Step();
+		GetIndex(index).ResetBorderState();
+		index_list.erase(index_list.begin() + index);
+		index_list_view->EraseChild(index);
+		child_list_view->EraseChild(index);
+		if (index == 0 && !(index_list.size() < child_number_min && !next_view && prev_view)) { co_await UpdateParentIndex(); }
+		if (index_list.size() < child_number_min) { co_await Merge(); }
 	}
-	void DeleteChild(NodeView& child) {
-		DeleteAt(child_list_view->GetChildIndex(child));
+	Task<> DeleteChild(NodeView& child) {
+		co_await DeleteAt(child_list_view->GetChildIndex(child));
 	}
-	void Merge() {
+	Task<> Merge() {
 		if (next_view) {
 			if (next_view->index_list.size() + index_list.size() > child_number_max) {
 				index_list.insert(index_list.end(), next_view->index_list.begin(), next_view->index_list.begin() + 1); next_view->index_list.erase(next_view->index_list.begin(), next_view->index_list.begin() + 1);
 				index_list_view->InsertChild(-1, next_view->index_list_view->ExtractChild(0));
 				InsertChild(-1, next_view->ExtractChild(0));
-				next_view->parent_view->UpdateIndexAt(*next_view);
+				co_await next_view->parent_view->UpdateIndexAt(*next_view);
 			} else {
 				index_list.insert(index_list.end(), next_view->index_list.begin(), next_view->index_list.end()); next_view->index_list.clear();
 				index_list_view->InsertChild(-1, next_view->index_list_view->ExtractChild(0, -1));
@@ -298,24 +302,24 @@ private:
 				ref_ptr<NodeView> temp = next_view;
 				next_view = next_view->next_view;
 				if (next_view) { next_view->prev_view = this; }
-				temp->parent_view->DeleteChild(*temp);
+				co_await temp->parent_view->DeleteChild(*temp);
 			}
 		} else if (prev_view) {
 			if (prev_view->index_list.size() + index_list.size() > child_number_max) {
 				index_list.insert(index_list.begin(), prev_view->index_list.end() - 1, prev_view->index_list.end()); prev_view->index_list.erase(prev_view->index_list.end() - 1, prev_view->index_list.end());
 				index_list_view->InsertChild(0, prev_view->index_list_view->ExtractChild(prev_view->index_list_view->Length() - 1));
 				InsertChild(0, prev_view->ExtractChild(prev_view->child_list_view->Length() - 1));
-				parent_view->UpdateIndexAt(*this);
+				co_await parent_view->UpdateIndexAt(*this);
 			} else {
 				prev_view->index_list.insert(prev_view->index_list.end(), index_list.begin(), index_list.end()); index_list.clear();
 				prev_view->index_list_view->InsertChild(-1, index_list_view->ExtractChild(0, -1));
 				prev_view->InsertChild(-1, ExtractChild(0, -1));
 				prev_view->next_view = next_view;
 				if (next_view) { next_view->prev_view = prev_view; }
-				parent_view->DeleteChild(*this);
+				co_await parent_view->DeleteChild(*this);
 			}
 		} else {
-			if (IsLeaf()) { return; }
+			if (IsLeaf()) { co_return; }
 			if (index_list.size() == 1) {
 				GetRoot().DestroyRoot(reinterpret_cast<std::unique_ptr<NodeView>&&>(std::move(ExtractChild(0))));
 			}
@@ -324,31 +328,29 @@ private:
 
 	// top down
 private:
-	void Insert(index_type key, value_type value) {
+	Task<> Insert(index_type key, value_type value) {
 		size_t index = std::upper_bound(index_list.begin(), index_list.end(), key) - index_list.begin();
 		if (IsLeaf()) {
-			InsertAt(index, key, value);
+			co_await InsertAt(index, key, value);
 		} else {
 			if (index > 0) { index--; }
 			GetIndex(index).SetBorderState(IndexView::border_find);
-			SetTimeout([=, this]() {
-				GetIndex(index).ResetBorderState();
-				GetChild(index).Insert(key, value);
-			}, animation_delay);
+			co_await Step();
+			GetIndex(index).ResetBorderState();
+			co_await GetChild(index).Insert(key, value);
 		}
 	}
-	void Delete(index_type key) {
+	Task<> Delete(index_type key) {
 		size_t index = std::upper_bound(index_list.begin(), index_list.end(), key) - index_list.begin();
-		if (index == 0) { return; } else { index--; }
+		if (index == 0) { co_return; } else { index--; }
 		if (IsLeaf()) {
-			if (index_list[index] != key) { return; }
-			DeleteAt(index);
+			if (index_list[index] != key) { co_return; }
+			co_await DeleteAt(index);
 		} else {
 			GetIndex(index).SetBorderState(IndexView::border_find);
-			SetTimeout([=, this]() {
-				GetIndex(index).ResetBorderState();
-				GetChild(index).Delete(key);
-			}, animation_delay);
+			co_await Step();
+			GetIndex(index).ResetBorderState();
+			co_await GetChild(index).Delete(key);
 		}
 	}
 };
@@ -365,9 +367,17 @@ inline void RootView::BuildRoot(std::unique_ptr<NodeView> node) {
 
 inline void RootView::DestroyRoot(std::unique_ptr<NodeView> node) { node->parent_view = nullptr; Reset(std::move(node)); }
 
-inline void RootView::Insert(index_type key, value_type value) { GetChild().Insert(key, value); }
+inline Task<> RootView::Insert(index_type key, value_type value) {
+	task_running = true;
+	co_await GetChild().Insert(key, value);
+	task_running = false;
+}
 
-inline void RootView::Delete(index_type key) { GetChild().Delete(key); }
+inline Task<> RootView::Delete(index_type key) {
+	task_running = true;
+	co_await GetChild().Delete(key);
+	task_running = false;
+}
 
 
 END_NAMESPACE(WndDesign)
