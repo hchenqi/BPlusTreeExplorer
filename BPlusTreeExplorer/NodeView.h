@@ -30,6 +30,7 @@ private:
 	friend class NodeView;
 public:
 	RootView();
+	~RootView() { Cancel(); }
 
 	// layout
 private:
@@ -82,6 +83,9 @@ private:
 	void Next() {
 		if (task_running) { continuation(); }
 	}
+	void Cancel() {
+		if (task_running) { continuation.Destroy(); task_running = false; }
+	}
 public:
 	void ScrollIntoView(WndObject& descendent, Rect region) {
 		ScrollFrame::ScrollIntoView(Rect(child->ConvertDescendentPoint(descendent, region.point), region.size));
@@ -121,6 +125,9 @@ private:
 		case MouseMsg::RightDown:
 			if (task_running) { return; }
 			Delete(rand() % 20);
+			break;
+		case MouseMsg::MiddleDown:
+			Cancel();
 			break;
 		default:
 			ScrollFrame::OnMouseMsg(msg);
