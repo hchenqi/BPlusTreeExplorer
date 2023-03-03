@@ -77,8 +77,8 @@ private:
 	Continuation<> continuation = nullptr;
 private:
 	Task<> Step() {
-		//return StartTimeout(step_delay);
-		return StartTask([this](Continuation<> continuation) { this->continuation = continuation; });
+		//co_await SetTimeout(step_delay);
+		co_await SetTask([this](Continuation<> continuation) { this->continuation = continuation; });
 	}
 	void Next() {
 		if (task_running) { continuation(); }
@@ -88,11 +88,12 @@ private:
 	}
 public:
 	void ScrollIntoView(WndObject& descendent, Rect region) {
-		ScrollFrame::ScrollIntoView(Rect(child->ConvertDescendentPoint(descendent, region.point), region.size));
+		Rect frame(point_zero, size); region = Rect(child->ConvertDescendentPoint(descendent, region.point), region.size);
+		ScrollFrame::ScrollIntoView(region.Intersect(frame + (region.Center() - frame.Center())));
 	}
 
 private:
-	void BuildRoot(std::unique_ptr<NodeView> node);
+	Task<> BuildRoot(std::unique_ptr<NodeView> node);
 	void DestroyRoot(std::unique_ptr<NodeView> node);
 public:
 	Task<> Insert(index_type key, value_type value);
@@ -113,7 +114,7 @@ private:
 			if (task_running) {
 				Next();
 			} else {
-				index_type key = rand() % 20; value_type value(1, L'A' + rand() % 26);
+				index_type key = rand() % 100; value_type value(1, L'A' + rand() % 26);
 				Insert(key, value);
 			}
 			break;
@@ -145,28 +146,26 @@ private:
 };
 
 
-class NodeView : public WndFrame, public LayoutType<Auto, Auto> {
+class NodeView : public InnerBorderFrame<Auto, Auto> {
 private:
 	friend class RootView;
 
 public:
-	NodeView(RootView& root) : WndFrame{
-		new InnerBorderFrame{
-			Border(1px, Color::Green),
-			new PaddingFrame{
-				Padding(2px),
-				new SplitLayoutVertical{
-					new CenterFrame<Assigned, Auto>{
-						new PaddingFrame{
-							Padding(5px),
-							new FixedFrame<Auto, Auto>{
-								30px,
-								index_list_view = new ListLayout<Horizontal>(1px)
-							}
+	NodeView(RootView& root) : InnerBorderFrame {
+		border_normal,
+		new PaddingFrame{
+			Padding(2px),
+			new SplitLayoutVertical{
+				new CenterFrame<Assigned, Auto>{
+					new PaddingFrame{
+						Padding(5px),
+						new FixedFrame<Auto, Auto>{
+							30px,
+							index_list_view = new ListLayout<Horizontal>(1px)
 						}
-					},
-					child_list_view = new ListLayoutAuto<Horizontal>(1px)
-				}
+					}
+				},
+				child_list_view = new ListLayoutAuto<Horizontal>(1px)
 			}
 		}
 	}, root(root) {
@@ -177,6 +176,19 @@ private:
 	RootView& root;
 private:
 	Task<> Step() { return root.Step(); }
+
+public:
+	static constexpr Border border_normal = Border(1px, Color::Black);
+	static constexpr Border border_finding = Border(1px, Color::Yellow);
+	static constexpr Border border_created = Border(1px, Color::Green);
+	static constexpr Border border_updated = border_created;
+	static constexpr Border border_deleting = Border(1px, Color::Red);
+	static constexpr Border border_splitting = border_deleting;
+	static constexpr Border border_merging = border_deleting;
+
+public:
+	void SetBorder(Border border) { InnerBorderFrame::SetBorder(border); root.ScrollIntoView(*this, Extend(Rect(point_zero, size), 30px)); }
+	void ResetBorder() { InnerBorderFrame::SetBorder(border_normal); }
 
 private:
 	class IndexView : public FixedFrame<Auto, Assigned> {
@@ -190,8 +202,8 @@ private:
 	public:
 		IndexView(RootView& root, index_type key) : FixedFrame{
 			30px,
-			border_frame = new InnerBorderFrame{
-				Border(1px, Color::Black),
+			border_frame = new InnerBorderFrame<Assigned, Assigned>{
+				border_normal,
 				new ClipFrame<Assigned, Assigned> {
 					text_box = new TextBox(TextStyle(), std::to_wstring(key))
 				}
@@ -206,16 +218,10 @@ private:
 		void SetIndex(index_type key) { text_box->SetText(std::to_wstring(key)); }
 
 	public:
-		static constexpr Border border_normal = Border(1px, Color::Black);
-		static constexpr Border border_find = Border(1px, Color::Orange);
-		static constexpr Border border_inserted = Border(1px, Color::Green);
-		static constexpr Border border_delete = Border(1px, Color::Red);
-		static constexpr Border border_updated = Border(1px, Color::Blue);
-	public:
 		ref_ptr<InnerBorderFrame<Assigned, Assigned>> border_frame;
 	public:
-		void SetBorderState(Border border) { border_frame->SetBorder(border); root.ScrollIntoView(*this, Extend(Rect(point_zero, size), 30px)); }
-		void ResetBorderState() { border_frame->SetBorder(border_normal); }
+		void SetBorder(Border border) { border_frame->SetBorder(border); root.ScrollIntoView(*this, Extend(Rect(point_zero, size), 30px)); }
+		void ResetBorder() { border_frame->SetBorder(border_normal); }
 	};
 
 	class ValueView : public MinFrame {
@@ -278,9 +284,11 @@ private:
 		index_list.insert(index_list.begin() + index, key);
 		index_list_view->InsertChild(index, new IndexView(root, key));
 		child_list_view->InsertChild(index, new ValueView(value));
-		GetIndex(index).SetBorderState(IndexView::border_inserted);
+
+		GetIndex(index).SetBorder(border_created);
 		co_await Step();
-		GetIndex(index).ResetBorderState();
+		GetIndex(index).ResetBorder();
+
 		if (index == 0) { co_await UpdateParentIndex(); }
 		if (index_list.size() > child_number_max) { co_await Split(); }
 	}
@@ -290,9 +298,11 @@ private:
 		index_list.insert(index_list.begin() + index, key);
 		index_list_view->InsertChild(index, new IndexView(root, key));
 		child_list_view->InsertChild(index, std::move(node));
-		GetIndex(index).SetBorderState(IndexView::border_inserted);
+
+		GetIndex(index).SetBorder(border_created);
 		co_await Step();
-		GetIndex(index).ResetBorderState();
+		GetIndex(index).ResetBorder();
+
 		if (index_list.size() > child_number_max) { co_await Split(); }
 	}
 	Task<> UpdateIndexAt(NodeView& child) {
@@ -300,12 +310,18 @@ private:
 		index_type key = child.index_list.front();
 		index_list[index] = key;
 		GetIndex(index).SetIndex(key);
-		GetIndex(index).SetBorderState(IndexView::border_updated);
+
+		GetIndex(index).SetBorder(border_updated);
 		co_await Step();
-		GetIndex(index).ResetBorderState();
+		GetIndex(index).ResetBorder();
+
 		if (index == 0) { co_await UpdateParentIndex(); }
 	}
 	Task<> Split() {
+		SetBorder(border_splitting);
+		co_await Step();
+		ResetBorder();
+
 		size_t index = index_list.size() / 2;
 		std::unique_ptr<NodeView> sibling(new NodeView(root));
 		sibling->parent_view = parent_view;
@@ -318,12 +334,12 @@ private:
 		if (next_view) { next_view->prev_view = sibling.get(); }
 		next_view = sibling.get();
 		if (IsRoot()) {
-			GetRoot().BuildRoot(std::move(sibling));
+			co_await GetRoot().BuildRoot(std::move(sibling));
 		} else {
 			co_await parent_view->InsertAfter(*this, std::move(sibling));
 		}
 	}
-	void Adopt(std::unique_ptr<NodeView> first, std::unique_ptr<NodeView> second) {
+	Task<> Adopt(std::unique_ptr<NodeView> first, std::unique_ptr<NodeView> second) {
 		index_type key_first = first->index_list.front(), key_second = second->index_list.front();
 		index_list.emplace_back(key_first); index_list.emplace_back(key_second);
 
@@ -334,12 +350,17 @@ private:
 		std::vector<ListLayoutAuto<Horizontal>::child_ptr> child_list;
 		child_list.emplace_back(std::move(first)); child_list.emplace_back(std::move(second));
 		InsertChild(0, std::move(child_list));
+
+		SetBorder(border_created);
+		co_await Step();
+		ResetBorder();
 	}
 private:
 	Task<> DeleteAt(size_t index) {
-		GetIndex(index).SetBorderState(IndexView::border_delete);
+		GetIndex(index).SetBorder(border_deleting);
 		co_await Step();
-		GetIndex(index).ResetBorderState();
+		GetIndex(index).ResetBorder();
+
 		index_list.erase(index_list.begin() + index);
 		index_list_view->EraseChild(index);
 		child_list_view->EraseChild(index);
@@ -351,30 +372,58 @@ private:
 	}
 	Task<> Merge() {
 		if (next_view) {
+			SetBorder(border_merging); next_view->SetBorder(border_merging);
+			co_await Step();
+			ResetBorder(); next_view->ResetBorder();
+
 			if (next_view->index_list.size() + index_list.size() > child_number_max) {
 				index_list.insert(index_list.end(), next_view->index_list.begin(), next_view->index_list.begin() + 1); next_view->index_list.erase(next_view->index_list.begin(), next_view->index_list.begin() + 1);
 				index_list_view->InsertChild(-1, next_view->index_list_view->ExtractChild(0));
 				InsertChild(-1, next_view->ExtractChild(0));
+
+				SetBorder(border_updated); next_view->SetBorder(border_updated);
+				co_await Step();
+				ResetBorder(); next_view->ResetBorder();
+
 				co_await next_view->parent_view->UpdateIndexAt(*next_view);
 			} else {
 				index_list.insert(index_list.end(), next_view->index_list.begin(), next_view->index_list.end()); next_view->index_list.clear();
 				index_list_view->InsertChild(-1, next_view->index_list_view->ExtractChild(0, -1));
 				InsertChild(-1, next_view->ExtractChild(0, -1));
+
+				SetBorder(border_updated); next_view->SetBorder(border_updated);
+				co_await Step();
+				ResetBorder(); next_view->ResetBorder();
+
 				ref_ptr<NodeView> temp = next_view;
 				next_view = next_view->next_view;
 				if (next_view) { next_view->prev_view = this; }
 				co_await temp->parent_view->DeleteChild(*temp);
 			}
 		} else if (prev_view) {
+			SetBorder(border_merging); prev_view->SetBorder(border_merging);
+			co_await Step();
+			ResetBorder(); prev_view->ResetBorder();
+
 			if (prev_view->index_list.size() + index_list.size() > child_number_max) {
 				index_list.insert(index_list.begin(), prev_view->index_list.end() - 1, prev_view->index_list.end()); prev_view->index_list.erase(prev_view->index_list.end() - 1, prev_view->index_list.end());
 				index_list_view->InsertChild(0, prev_view->index_list_view->ExtractChild(prev_view->index_list_view->Length() - 1));
 				InsertChild(0, prev_view->ExtractChild(prev_view->child_list_view->Length() - 1));
+
+				SetBorder(border_updated); prev_view->SetBorder(border_updated);
+				co_await Step();
+				ResetBorder(); prev_view->ResetBorder();
+
 				co_await parent_view->UpdateIndexAt(*this);
 			} else {
 				prev_view->index_list.insert(prev_view->index_list.end(), index_list.begin(), index_list.end()); index_list.clear();
 				prev_view->index_list_view->InsertChild(-1, index_list_view->ExtractChild(0, -1));
 				prev_view->InsertChild(-1, ExtractChild(0, -1));
+
+				SetBorder(border_updated); prev_view->SetBorder(border_updated);
+				co_await Step();
+				ResetBorder(); prev_view->ResetBorder();
+
 				prev_view->next_view = next_view;
 				if (next_view) { next_view->prev_view = prev_view; }
 				co_await parent_view->DeleteChild(*this);
@@ -382,6 +431,10 @@ private:
 		} else {
 			if (IsLeaf()) { co_return; }
 			if (index_list.size() == 1) {
+				SetBorder(border_deleting);
+				co_await Step();
+				ResetBorder();
+
 				GetRoot().DestroyRoot(reinterpret_cast<std::unique_ptr<NodeView>&&>(std::move(ExtractChild(0))));
 			}
 		}
@@ -395,9 +448,10 @@ private:
 			co_await InsertAt(index, key, value);
 		} else {
 			if (index > 0) { index--; }
-			GetIndex(index).SetBorderState(IndexView::border_find);
+			GetIndex(index).SetBorder(border_finding);
 			co_await Step();
-			GetIndex(index).ResetBorderState();
+			GetIndex(index).ResetBorder();
+
 			co_await GetChild(index).Insert(key, value);
 		}
 	}
@@ -408,9 +462,10 @@ private:
 			if (index_list[index] != key) { co_return; }
 			co_await DeleteAt(index);
 		} else {
-			GetIndex(index).SetBorderState(IndexView::border_find);
+			GetIndex(index).SetBorder(border_finding);
 			co_await Step();
-			GetIndex(index).ResetBorderState();
+			GetIndex(index).ResetBorder();
+
 			co_await GetChild(index).Delete(key);
 		}
 	}
@@ -431,12 +486,14 @@ inline RootView::RootView() : ScrollFrame{
 
 inline NodeView& RootView::GetChild() const { return static_cast<NodeView&>(*child_frame->child); }
 
-inline void RootView::BuildRoot(std::unique_ptr<NodeView> node) {
+inline Task<> RootView::BuildRoot(std::unique_ptr<NodeView> node) {
 	std::unique_ptr<NodeView> root_old(static_cast<NodeView*>(child_frame->Reset(new NodeView(*this)).release()));
-	GetChild().Adopt(std::move(root_old), std::move(node));
+	co_await GetChild().Adopt(std::move(root_old), std::move(node));
 }
 
-inline void RootView::DestroyRoot(std::unique_ptr<NodeView> node) { node->parent_view = nullptr; child_frame->Reset(std::move(node)); }
+inline void RootView::DestroyRoot(std::unique_ptr<NodeView> node) {
+	node->parent_view = nullptr; child_frame->Reset(std::move(node));
+}
 
 inline Task<> RootView::Insert(index_type key, value_type value) {
 	task_running = true;
