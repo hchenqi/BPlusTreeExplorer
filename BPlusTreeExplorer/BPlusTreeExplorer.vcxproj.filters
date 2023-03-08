@@ -41,10 +41,13 @@
     <ClInclude Include="component\Checkbox.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="component\InputButton.h">
+    <ClInclude Include="component\TextButton.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="component\RadioGroup.h">
+    <ClInclude Include="component\ScrollView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="component\TextInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

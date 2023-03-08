@@ -2,6 +2,8 @@
 #include "WndDesign/widget/TitleBarFrame.h"
 #include "WndDesign/frame/CenterFrame.h"
 
+#include "component/TextInfo.h"
+
 #include "NodeView.h"
 #include "InputPanel.h"
 #include "ControlPanel.h"
@@ -21,35 +23,26 @@ private:
 public:
 	MainFrame() : TitleBarFrame{
 		Style(),
-		new SplitLayoutVertical{
-			new CenterFrame<Assigned, Assigned>{
-				root_view = new RootView()
-			},
-			new SplitLayoutVertical{
-				new ClipFrame<Assigned, Auto>(text_info = new TextBox(TextBox::Style(), L"")),
-				new SolidColorBackground<FixedFrame<Assigned, Auto>, Color::LightSteelBlue>{
-					102px,
-					new DivideLayout<Horizontal>{
-						input_panel = new InputPanel(),
-						control_panel = new ControlPanel()
+		[]() {
+			alloc_ptr<RootView> root_view = new RootView();
+			return new SplitLayoutVertical{
+				new CenterFrame<Assigned, Assigned>{
+					root_view
+				},
+				new SplitLayoutVertical{
+					new ClipFrame<Assigned, Auto>(new TextInfo(root_view->info_state, TextInfo::Style())),
+					new SolidColorBackground<FixedFrame<Assigned, Auto>, Color::LightSteelBlue>{
+						100px,
+						new DivideLayout<Horizontal>{
+							new InputPanel(*root_view),
+							new ControlPanel(*root_view)
+						}
 					}
 				}
-			}
-		}
+			};
+		}()
 	} {
-		input_panel->root_view = root_view;
-		control_panel->root_view = root_view;
-		root_view->OnStateUpdate = [&](bool running, std::wstring info) {
-			running ? input_panel->Disable() : input_panel->Enable();
-			text_info->Assign(info);
-		};
 	}
-
-private:
-	ref_ptr<RootView> root_view;
-	ref_ptr<InputPanel> input_panel;
-	ref_ptr<ControlPanel> control_panel;
-	ref_ptr<TextBox> text_info;
 };
 
 int main() {

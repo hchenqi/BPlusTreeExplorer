@@ -1,6 +1,5 @@
 #pragma once
 
-#include "WndDesign/frame/ScrollFrame.h"
 #include "WndDesign/frame/CenterFrame.h"
 #include "WndDesign/frame/PaddingFrame.h"
 #include "WndDesign/frame/FixedFrame.h"
@@ -10,8 +9,10 @@
 #include "WndDesign/layout/ListLayout.h"
 #include "WndDesign/layout/ListLayoutAuto.h"
 #include "WndDesign/control/TextBox.h"
+#include "WndDesign/message/state.h"
 #include "WndDesign/message/timeout.h"
-#include "WndDesign/message/mouse_tracker.h"
+
+#include "component/ScrollView.h"
 
 #include <vector>
 
@@ -24,70 +25,18 @@ using value_type = std::wstring;
 class NodeView;
 
 
-class RootView : public ScrollFrame<Bidirectional>, public LayoutType<Relative, Relative> {
+class RootView : public ScrollView {
 private:
 	friend class NodeView;
 public:
 	RootView();
-	~RootView() { Cancel(); }
-
-	// layout
-private:
-	Size size_ref;
-private:
-	virtual Size OnSizeRefUpdate(Size size_ref) override {
-		if (this->size_ref != size_ref) {
-			this->size_ref = size_ref;
-			Size size = Size(std::min(size_ref.width, child_size.width), std::min(size_ref.height, child_size.height));
-			if (this->size != size) {
-				this->size = size;
-				UpdateFrameOffset(frame_offset);
-			}
-		}
-		return size;
-	}
-	virtual void OnChildSizeUpdate(WndObject& child, Size child_size) override {
-		if (this->child_size != child_size) {
-			this->child_size = child_size;
-			Size size = Size(std::min(size_ref.width, child_size.width), std::min(size_ref.height, child_size.height));
-			if (this->size != size) {
-				this->size = size;
-				SizeUpdated(size);
-			}
-			UpdateFrameOffset(frame_offset);
-		}
-	}
-private:
-	void ScrollIntoView(WndObject& descendent, Rect region) {
-		Rect frame(point_zero, size); region = Rect(child->ConvertDescendentPoint(descendent, region.point), region.size);
-		ScrollFrame::ScrollIntoView(region.Intersect(frame + (region.Center() - frame.Center())));
-	}
-
-	// message
-private:
-	MouseTracker mouse_tracker;
-	Point mouse_down_frame_offset;
-private:
-	virtual ref_ptr<WndObject> HitTest(Point& point) override { return this; }
-	virtual void OnMouseMsg(MouseMsg msg) override {
-		switch (mouse_tracker.Track(msg)) {
-		case MouseTrackMsg::LeftDown: mouse_down_frame_offset = frame_offset; SetFocus(); break;
-		case MouseTrackMsg::LeftDrag: ScrollFrame::ScrollIntoView(Rect(mouse_down_frame_offset - (msg.point - mouse_tracker.mouse_down_position), size)); break;
-		}
-		ScrollFrame::OnMouseMsg(msg);
-	}
+	~RootView() { Skip(); }
 
 	// root node
 private:
-	class ChildFrame : public WndFrameMutable, public LayoutType<Auto, Auto> {
-	public:
-		WndFrameMutable::WndFrameMutable;
-		WndFrameMutable::child;
-	};
+	ref_ptr<WndFrameMutable> root_frame;
 private:
-	ref_ptr<ChildFrame> child_frame;
-private:
-	NodeView& GetChild() const;
+	NodeView& GetRootNode() const;
 
 	// operation
 private:
@@ -101,22 +50,19 @@ public:
 
 	// stepping
 public:
-	enum class StepMode { None, Timeout, Manuel };
+	State<bool> run_state = false;
+	State<std::wstring> info_state = std::wstring();
 public:
-	std::function<void(bool running, const std::wstring& info)> OnStateUpdate;
+	enum class StepMode { None, Timeout, Manuel };
 private:
 	StepMode step_mode = StepMode::Manuel;
 	uint step_delay = 1000;
-	bool running = false;
-	std::wstring info;
 	Continuation<> continuation = nullptr;
 public:
 	void SetStepMode(StepMode mode) { step_mode = mode; }
 private:
-	void SetState(bool running, std::wstring info) { this->running = running; this->info = info; OnStateUpdate(running, info); }
-private:
 	Task<> Step(std::wstring info) {
-		SetState(running, info);
+		info_state.Set(info);
 		switch (step_mode) {
 		case StepMode::None: break;
 		case StepMode::Timeout: co_await SetTimeout(step_delay); break;
@@ -125,12 +71,8 @@ private:
 		co_return;
 	}
 public:
-	void Next() {
-		if (step_mode == StepMode::Manuel && running) { continuation(); }
-	}
-	void Cancel() {
-		if (step_mode == StepMode::Manuel && running) { continuation.Destroy(); SetState(false, L""); }
-	}
+	void Next() { if (step_mode == StepMode::Manuel && run_state.Get() == true) { continuation(); } }
+	void Skip() { if (step_mode == StepMode::Manuel && run_state.Get() == true) { continuation(); Skip(); } }
 };
 
 
@@ -504,50 +446,50 @@ private:
 };
 
 
-inline RootView::RootView() : ScrollFrame{
+inline RootView::RootView() : ScrollView{
 	new PaddingFrame{
 		Padding(50px),
-		child_frame = new ChildFrame{
+		WndDesign::child_ptr<Auto, Auto>() = root_frame = new WndFrameMutable{
 			new NodeView(*this)
 		}
 	}
 } {
-	GetChild().leaf = true;
+	GetRootNode().leaf = true;
 }
 
-inline NodeView& RootView::GetChild() const { return static_cast<NodeView&>(*child_frame->child); }
+inline NodeView& RootView::GetRootNode() const { return static_cast<NodeView&>(root_frame->GetChild()); }
 
 inline Task<> RootView::BuildRoot(std::unique_ptr<NodeView> node) {
-	std::unique_ptr<NodeView> root_old(static_cast<NodeView*>(child_frame->Reset(new NodeView(*this)).release()));
-	co_await GetChild().Adopt(std::move(root_old), std::move(node));
+	std::unique_ptr<NodeView> root_old(static_cast<NodeView*>(root_frame->Reset(new NodeView(*this)).release()));
+	co_await GetRootNode().Adopt(std::move(root_old), std::move(node));
 }
 
 inline void RootView::DestroyRoot(std::unique_ptr<NodeView> node) {
-	node->parent_view = nullptr; child_frame->Reset(std::move(node));
+	node->parent_view = nullptr; root_frame->Reset(std::move(node));
 }
 
 inline Task<> RootView::Insert(std::pair<index_type, value_type> pair) {
-	SetState(true, info);
-	co_await GetChild().Insert(pair.first, pair.second);
-	SetState(false, L"");
+	run_state.Set(true);
+	co_await GetRootNode().Insert(pair.first, pair.second);
+	run_state.Set(false); info_state.Set(L"");
 }
 
 inline Task<> RootView::Find(index_type key) {
-	SetState(true, info);
-	co_await GetChild().Find(key);
-	SetState(false, L"");
+	run_state.Set(true);
+	co_await GetRootNode().Find(key);
+	run_state.Set(false); info_state.Set(L"");
 }
 
 inline Task<> RootView::Update(std::pair<index_type, value_type> pair) {
-	SetState(true, info);
-	co_await GetChild().Update(pair.first, pair.second);
-	SetState(false, L"");
+	run_state.Set(true);
+	co_await GetRootNode().Update(pair.first, pair.second);
+	run_state.Set(false); info_state.Set(L"");
 }
 
 inline Task<> RootView::Delete(index_type key) {
-	SetState(true, info);
-	co_await GetChild().Delete(key);
-	SetState(false, L"");
+	run_state.Set(true);
+	co_await GetRootNode().Delete(key);
+	run_state.Set(false); info_state.Set(L"");
 }
 
 

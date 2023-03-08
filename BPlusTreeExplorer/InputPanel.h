@@ -9,7 +9,7 @@
 #include "component/Checkbox.h"
 #include "component/NumericInput.h"
 #include "component/TextInput.h"
-#include "component/InputButton.h"
+#include "component/TextButton.h"
 
 #include "NodeView.h"
 
@@ -21,17 +21,17 @@ BEGIN_NAMESPACE(WndDesign)
 
 class InputPanel : public WndFrame, LayoutType<Assigned, Assigned> {
 public:
-	InputPanel() : WndFrame{
+	InputPanel(RootView& root_view) : WndFrame{
 		new SplitLayoutVertical{
 			new BorderFrame{
 				Border(0px, Color::SlateGray),
 				input_group = new InputGroup()
 			},
 			new DivideLayout<Horizontal>{
-				button_insert = new InputButton(L"Insert", [this]() { root_view->Insert(input_group->GetValue()); }),
-				button_find = new InputButton(L"Find", [this]() { root_view->Find(input_group->GetValue().first); }),
-				button_update = new InputButton(L"Update", [this]() { root_view->Update(input_group->GetValue()); }),
-				button_delete = new InputButton(L"Delete", [this]() { root_view->Delete(input_group->GetValue().first); }),
+				new InputButton(root_view.run_state, L"Insert", [&]() { root_view.Insert(input_group->GetValue()); }),
+				new InputButton(root_view.run_state, L"Find", [&]() { root_view.Find(input_group->GetValue().first); }),
+				new InputButton(root_view.run_state, L"Update", [&]() { root_view.Update(input_group->GetValue()); }),
+				new InputButton(root_view.run_state, L"Delete", [&]() { root_view.Delete(input_group->GetValue().first); }),
 			}
 		}
 	} {
@@ -46,7 +46,7 @@ private:
 	public:
 		InputGroup() : TableLayout{
 			std::vector<TableLayout::ColumnStyle>(2, { 50pct }),
-			TableLayout::Row({ 25px, 1px, Color::SlateGray }, new TextLabel(L"random"), new CenterFrame<Auto, Assigned>(checkbox = new Checkbox([this](bool checked) { checked? GenerateValue() : ResetValue(); }))),
+			TableLayout::Row({ 25px, 1px, Color::SlateGray }, new TextLabel(L"random"), new CenterFrame<Auto, Assigned>(checkbox = new Checkbox([this](bool checked) { checked ? GenerateValue() : ResetValue(); }))),
 			TableLayout::Row({ 25px, 1px, Color::SlateGray }, new TextLabel(L"key"), numeric_input = new NumericInput()),
 			TableLayout::Row({ 25px, 1px, Color::SlateGray }, new TextLabel(L"value"), text_input = new TextInput()),
 		} {
@@ -75,28 +75,19 @@ private:
 		}
 	};
 
-public:
-	ref_ptr<RootView> root_view = nullptr;
+	class InputButton : public TextButton {
+	public:
+		InputButton(State<bool>& state, std::wstring text, std::function<void(void)> callback) :
+			TextButton(text, callback), watcher(state, [&](bool) { OnLeave(); }) {
+		}
+	private:
+		State<bool>::Watcher watcher;
+	private:
+		virtual ref_ptr<WndObject> HitTest(Point& point) override { return watcher.Get() ? nullptr : this; }
+	};
+
 private:
 	ref_ptr<InputGroup> input_group;
-private:
-	ref_ptr<InputButton> button_insert;
-	ref_ptr<InputButton> button_find;
-	ref_ptr<InputButton> button_update;
-	ref_ptr<InputButton> button_delete;
-public:
-	void Enable() {
-		button_insert->Enable();
-		button_find->Enable();
-		button_update->Enable();
-		button_delete->Enable();
-	}
-	void Disable() {
-		button_insert->Disable();
-		button_find->Disable();
-		button_update->Disable();
-		button_delete->Disable();
-	}
 };
 
 
