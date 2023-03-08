@@ -162,6 +162,14 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ControlPanel.h" />
+    <ClInclude Include="component\Checkbox.h" />
+    <ClInclude Include="component\InputButton.h" />
+    <ClInclude Include="component\NumericInput.h" />
+    <ClInclude Include="component\RadioGroup.h" />
+    <ClInclude Include="component\TextInput.h" />
+    <ClInclude Include="component\TextLabel.h" />
+    <ClInclude Include="InputPanel.h" />
     <ClInclude Include="NodeView.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

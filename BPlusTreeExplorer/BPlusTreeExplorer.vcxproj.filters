@@ -23,5 +23,29 @@
     <ClInclude Include="NodeView.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="component\NumericInput.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="InputPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ControlPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="component\TextInput.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="component\TextLabel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="component\Checkbox.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="component\InputButton.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="component\RadioGroup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
