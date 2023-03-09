@@ -45,7 +45,7 @@ public:
 	}
 };
 
-int main() {
+void main() {
 	global.AddWnd(new MainFrame());
 	global.MessageLoop();
 }
