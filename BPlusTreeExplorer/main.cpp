@@ -30,7 +30,7 @@ public:
 					root_view
 				},
 				new SplitLayoutVertical{
-					new ClipFrame<Assigned, Auto>(new TextInfo(root_view->info_state, TextInfo::Style())),
+					new CenterFrame<Assigned, Auto>(new TextInfo(root_view->info_state, TextInfo::Style())),
 					new SolidColorBackground<FixedFrame<Assigned, Auto>, Color::LightSteelBlue>{
 						100px,
 						new DivideLayout<Horizontal>{

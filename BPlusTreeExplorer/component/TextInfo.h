@@ -9,7 +9,7 @@ BEGIN_NAMESPACE(WndDesign)
 
 class TextInfo : public TextBox {
 public:
-	TextInfo(State<std::wstring>& state, Style style) :
+	TextInfo(const State<std::wstring>& state, Style style) :
 		TextBox(style, std::move(text)), watcher(state, [&](const std::wstring& text) { Assign(text); }) {
 	}
 private:

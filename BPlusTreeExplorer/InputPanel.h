@@ -77,13 +77,13 @@ private:
 
 	class InputButton : public TextButton {
 	public:
-		InputButton(State<bool>& state, std::wstring text, std::function<void(void)> callback) :
+		InputButton(const State<bool>& state, std::wstring text, std::function<void(void)> callback) :
 			TextButton(text, callback), watcher(state, [&](bool) { OnLeave(); }) {
 		}
 	private:
 		State<bool>::Watcher watcher;
 	private:
-		virtual ref_ptr<WndObject> HitTest(Point& point) override { return watcher.Get() ? nullptr : this; }
+		virtual ref_ptr<WndObject> HitTest(Point& point) override { return *watcher.Get() ? nullptr : this; }
 	};
 
 private:

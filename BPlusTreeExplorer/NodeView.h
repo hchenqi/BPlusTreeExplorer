@@ -59,7 +59,7 @@ private:
 	uint step_delay = 1000;
 	Continuation<> continuation = nullptr;
 public:
-	void SetStepMode(StepMode mode) { step_mode = mode; }
+	void SetStepMode(StepMode mode) { Skip(); step_mode = mode; }
 private:
 	Task<> Step(std::wstring info) {
 		info_state.Set(info);
