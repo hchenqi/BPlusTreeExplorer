@@ -1,9 +1,10 @@
 #pragma once
 
+#include "WndDesign/frame/ClipFrame.h"
 #include "WndDesign/frame/CenterFrame.h"
 #include "WndDesign/frame/PaddingFrame.h"
 #include "WndDesign/frame/FixedFrame.h"
-#include "WndDesign/frame/MinMaxFrame.h"
+#include "WndDesign/frame/MinFrame.h"
 #include "WndDesign/frame/InnerBorderFrame.h"
 #include "WndDesign/layout/SplitLayout.h"
 #include "WndDesign/layout/ListLayout.h"
@@ -155,7 +156,7 @@ private:
 		void ResetBorder() { border_frame->SetBorder(border_normal); }
 	};
 
-	class ValueView : public MinFrame {
+	class ValueView : public MinFrame<Auto, Auto> {
 	private:
 		struct TextStyle : TextBox::Style {};
 	public:

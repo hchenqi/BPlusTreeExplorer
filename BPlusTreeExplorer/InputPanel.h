@@ -83,7 +83,7 @@ private:
 	private:
 		State<bool>::Watcher watcher;
 	private:
-		virtual ref_ptr<WndObject> HitTest(Point& point) override { return *watcher.Get() ? nullptr : this; }
+		virtual ref_ptr<WndObject> HitTest(MouseMsg& msg) override { return *watcher.Get() ? nullptr : this; }
 	};
 
 private:

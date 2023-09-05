@@ -21,7 +21,7 @@ private:
 			Size size = Size(std::min(size_ref.width, child_size.width), std::min(size_ref.height, child_size.height));
 			if (this->size != size) {
 				this->size = size;
-				UpdateFrameOffset(frame_offset);
+				frame_offset = ClampFrameOffset(frame_offset);
 			}
 		}
 		return size;
@@ -34,7 +34,7 @@ private:
 				this->size = size;
 				SizeUpdated(size);
 			}
-			UpdateFrameOffset(frame_offset);
+			frame_offset = ClampFrameOffset(frame_offset);
 		}
 	}
 public:
@@ -48,9 +48,12 @@ private:
 	MouseTracker mouse_tracker;
 	Point mouse_down_frame_offset;
 private:
-	virtual ref_ptr<WndObject> HitTest(Point& point) override { return this; }
+	virtual ref_ptr<WndObject> HitTest(MouseMsg& msg) override { return this; }
+private:
 	virtual void OnMouseMsg(MouseMsg msg) override {
 		switch (msg.type) {
+		case MouseMsg::WheelVertical: Scroll(Vector(0.0f, (float)-msg.wheel_delta)); break;
+		case MouseMsg::WheelHorizontal: Scroll(Vector((float)msg.wheel_delta, 0.0f)); break;
 		case MouseMsg::LeftDown: SetCapture(); break;
 		case MouseMsg::LeftUp: ReleaseCapture(); break;
 		}
@@ -58,7 +61,6 @@ private:
 		case MouseTrackMsg::LeftDown: mouse_down_frame_offset = frame_offset; SetFocus(); break;
 		case MouseTrackMsg::LeftDrag: ScrollFrame::ScrollIntoView(Rect(mouse_down_frame_offset - (msg.point - mouse_tracker.mouse_down_position), size)); break;
 		}
-		ScrollFrame::OnMouseMsg(msg);
 	}
 };
 

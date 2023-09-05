@@ -24,7 +24,7 @@ public:
 		background = background_normal;
 	}
 private:
-	virtual ref_ptr<WndObject> HitTest(Point& point) override { return this; }
+	virtual ref_ptr<WndObject> HitTest(MouseMsg& msg) override { return this; }
 protected:
 	enum class ButtonState { Normal, Hover, Press } state = ButtonState::Normal;
 	std::function<void(void)> callback;
